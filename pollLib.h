@@ -18,4 +18,7 @@ void addToPollSet(int socketNumber);
 void removeFromPollSet(int socketNumber);
 int pollCall(int timeInMilliSeconds);
 
+void addNewSocket(int socketNumber);
+void processClient(int socketNumber);
+
 #endif

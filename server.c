@@ -23,36 +23,52 @@
 #include "pdu.h"
 #include "networks.h"
 #include "safeUtil.h"
+#include "pollLib.h"
 
 #define MAXBUF 1024
 #define DEBUG_FLAG 1
 
 void recvFromClient(int clientSocket);
 int checkArgs(int argc, char *argv[]);
+void serverControl(int mainServerSocket);
 
+// function changed
 int main(int argc, char *argv[])
 {
 	int mainServerSocket = 0;   //socket descriptor for the server socket
-	int clientSocket = 0;   //socket descriptor for the client socket
 	int portNumber = 0;
+
 	
+	setupPollSet();
 	portNumber = checkArgs(argc, argv);
 	
 	//create the server socket
 	mainServerSocket = tcpServerSetup(portNumber);
-	while(1){
-	// wait for client to connect
-	clientSocket = tcpAccept(mainServerSocket, DEBUG_FLAG);
+	addToPollSet(mainServerSocket);
 
-	recvFromClient(clientSocket);
+	serverControl(mainServerSocket);
 	
-	/* close the sockets */
-	close(clientSocket);
-	}
 	close(mainServerSocket);
 
 	
 	return 0;
+}
+
+void serverControl(int mainServerSocket){
+
+	while(1){
+		int clientSocket = 0;
+		if ((clientSocket = pollCall(-1)) < 0){ // wait indefinitely and check for error
+			printf("Error in pollCall\n");
+			exit(-1);
+		}
+		else if(clientSocket == mainServerSocket){ // new client socket
+			addNewSocket(clientSocket);
+		}
+		else{ // client socket
+			processClient(clientSocket);
+		}
+	}
 }
 
 void recvFromClient(int clientSocket)

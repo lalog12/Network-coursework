@@ -14,10 +14,11 @@
 #include <poll.h>
 #include <stdlib.h>
 #include <stdio.h>
+#include "networks.h"
 
 #include "safeUtil.h"
 #include "pollLib.h"
-
+#include "pdu.h"
 
 // Poll global variables 
 static struct pollfd * pollFileDescriptors;
@@ -33,6 +34,42 @@ void setupPollSet()
 	pollFileDescriptors = (struct pollfd *) sCalloc(POLL_SET_SIZE, sizeof(struct pollfd));
 }
 
+// *
+void addNewSocket(int socketNumber)
+{
+	int new_socket = tcpAccept(socketNumber, 0);
+
+	if (new_socket > 0)
+	{
+		addToPollSet(new_socket);
+	}
+
+}
+// *
+void processClient(int socketNumber){
+    uint8_t dataBuffer[MAXBUF];
+    int messageLen = 0;
+
+    //now get the data from the client_socket
+    if ((messageLen = recvPDU(socketNumber, dataBuffer, MAXBUF)) < 0)
+    {
+        perror("recv call");
+        exit(-1);
+    }
+
+    if (messageLen > 0)
+    {
+        printf("Message received on socket %d, length: %d Data: %s\n", 
+               socketNumber, messageLen, dataBuffer);
+    }
+    else if(messageLen == 0)
+    {
+        printf("Connection closed by other side\n");
+        removeFromPollSet(socketNumber);  // Remove from poll set
+        close(socketNumber);              // Close the socket
+        return;
+    }
+}
 
 void addToPollSet(int socketNumber)
 {

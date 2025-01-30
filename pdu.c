@@ -9,30 +9,36 @@
 
 int sendPDU(int clientSocket, uint8_t * dataBuffer, int lengthOfData){
     
-    uint16_t length = htons(lengthOfData);
-    uint8_t PDU_buffer[2 + lengthOfData];
-    memcpy(PDU_buffer, &length, 2);
-    memcpy(PDU_buffer + 2, dataBuffer, lengthOfData);
-    printf("length of PDU: %d\n", 2 + lengthOfData);
-    printf("length network order: %d\n", length);
+    uint16_t totalLength = lengthOfData + 2;
+    uint16_t networkTotalLength = htons(totalLength);
 
-    int bytesSent = safeSend(clientSocket, PDU_buffer, 2 + lengthOfData, 0);
+    uint8_t PDU_buffer[totalLength]; // Buffer that will hold the contents that will be sent to the server
+
+    memcpy(PDU_buffer, &networkTotalLength, 2); // Total Length of PDU is added to the buffer
+    memcpy(PDU_buffer + 2, dataBuffer, lengthOfData); // The data that will be sent is added to the buffer
+
+    printf("Total length of PDU: %d\n", totalLength);
+
+    int bytesSent = safeSend(clientSocket, PDU_buffer, totalLength, 0);
     printf("bytesSent: %d\n", bytesSent);
     return bytesSent;
 }
 
-int recvPDU(int socketNumber, uint8_t * dataBuffer, int bufferSize){
+int recvPDU(int socketNumber, uint8_t *dataBuffer, int bufferSize){
     uint8_t lengthBuffer[2];
 
     int bytesReceived = safeRecv(socketNumber, lengthBuffer, 2, MSG_WAITALL);
     if(bytesReceived == 0){
         return 0;
     }
-    int length = lengthBuffer[0] << 8 | lengthBuffer[1];
-    printf("length of PDU: %d\n", length);
-    if(length > bufferSize){
+
+    uint16_t totalLength = ntohs(*(uint16_t*)lengthBuffer);
+    printf("length of received PDU: %d\n", totalLength);
+    
+    if(totalLength > bufferSize + 2){
         exit(-1);
     }
-    bytesReceived = safeRecv(socketNumber, dataBuffer, length, MSG_WAITALL);
+
+    bytesReceived = safeRecv(socketNumber, dataBuffer, totalLength - 2, MSG_WAITALL);  // HAS TO BE LENGTH - 2, DONT CHANGE
     return bytesReceived;
 }

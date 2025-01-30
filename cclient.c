@@ -23,28 +23,94 @@
 #include "pdu.h"
 #include "networks.h"
 #include "safeUtil.h"
+#include "pollLib.h"
+#include "pdu.h"
+
 
 #define MAXBUF 1024
 #define DEBUG_FLAG 1
 
+void recvFromServer(int mainSocket);
+void clientControl(int mainSocket);
 void sendToServer(int socketNum);
 int readFromStdin(uint8_t * buffer);
 void checkArgs(int argc, char * argv[]);
+void processStdin(int socketNum);
+void processMSGFromServer(int mainSocket);
 
 int main(int argc, char * argv[])
 {
 	int socketNum = 0;         //socket descriptor
 	
 	checkArgs(argc, argv);
-
+	
 	/* set up the TCP Client socket  */  
 	socketNum = tcpClientSetup(argv[1], argv[2], DEBUG_FLAG); // server name and port number
-	
-	sendToServer(socketNum);	
-	
+	while(1){
+		clientControl(socketNum);
+	}
 	close(socketNum);
 	
 	return 0;
+}
+
+void clientControl(int mainSocket){
+	setupPollSet();
+	addToPollSet(mainSocket);
+	addToPollSet(STDIN_FILENO);
+
+	while(1){
+		printf("Enter data: ");
+		fflush(stdout);
+		int clientSocket = 0;
+		if ((clientSocket = pollCall(-1)) < 0){ // wait indefinitely and check for error
+			printf("Error in pollCall\n");
+			exit(-1);
+		}
+		else if(clientSocket == mainSocket){ // message from server
+			processMSGFromServer(mainSocket);
+		}
+		else if (clientSocket == STDIN_FILENO){
+			processStdin(mainSocket);
+		}
+		else{
+			printf("No cases met in clientControl function in cclient.c");
+		}
+	}
+}
+
+void processMSGFromServer(int mainSocket){
+	recvFromServer(mainSocket);
+}
+
+void processStdin(int socketNum){
+	sendToServer(socketNum);
+}
+
+void recvFromServer(int mainSocket)
+{
+	uint8_t dataBuffer[MAXBUF];
+	int messageLen = 0;
+
+	//now get the data from the client_socket
+	if ((messageLen = recvPDU(mainSocket, dataBuffer, MAXBUF)) < 0)
+	{
+		perror("recv call");
+		close(mainSocket);
+		removeFromPollSet(mainSocket);
+	}
+
+	if (messageLen > 0)
+	{
+		printf("Message received from server on socket %d, length: %d Data: %s\n",mainSocket , messageLen, dataBuffer);
+	}
+	else
+	{
+		printf("\nServer terminated\n");
+		close(mainSocket);
+		removeFromPollSet(mainSocket);
+		exit(0);
+	}
 }
 
 void sendToServer(int socketNum)

@@ -9,6 +9,7 @@
 #include <stdio.h>
 #include <stdint.h>
 
+#define MAXBUF 1024
 
 int sendPDU(int clientSocket, uint8_t * dataBuffer, int lengthOfData);
 int recvPDU(int socketNumber, uint8_t * dataBuffer, int bufferSize);
