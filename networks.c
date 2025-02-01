@@ -95,7 +95,7 @@ int tcpAccept(int mainServerSocket, int debugFlag)
 	return(client_socket);
 }
 
-// This funciton opens a TCP socket, and connects to the server
+// This function opens a TCP socket, and connects to the server
 // returns the socket number to the server
 
 int tcpClientSetup(char * serverName, char * serverPort, int debugFlag)

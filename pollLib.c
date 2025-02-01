@@ -19,6 +19,7 @@
 #include "safeUtil.h"
 #include "pollLib.h"
 #include "pdu.h"
+#include "linkedlist.h"
 
 // Poll global variables 
 static struct pollfd * pollFileDescriptors;
@@ -37,16 +38,16 @@ void setupPollSet()
 // *
 void addNewSocket(int socketNumber)
 {
+
 	int new_socket = tcpAccept(socketNumber, 0);
 
 	if (new_socket > 0)
 	{
 		addToPollSet(new_socket);
 	}
-
 }
 // *
-void processClient(int socketNumber){
+void processClient(int socketNumber, linkedList *list){
     uint8_t dataBuffer[MAXBUF];
     int messageLen = 0;
 
@@ -57,18 +58,39 @@ void processClient(int socketNumber){
         exit(-1);
     }
 
-    if (messageLen > 0)
-    {
-        printf("Message received on socket %d, length: %d Data: %s\n", 
-               socketNumber, messageLen, dataBuffer);
-    }
-    else if(messageLen == 0)
+	// changes after this line
+    if(messageLen == 0)
     {
         printf("Connection closed by other side\n");
         removeFromPollSet(socketNumber);  // Remove from poll set
         close(socketNumber);              // Close the socket
         return;
     }
+	else if (messageLen > 0)
+    {	
+		flag_control(list, dataBuffer, socketNumber);
+    }
+}
+
+void flag_control(linkedList *list, uint8_t *buffer, int socket){
+
+	uint8_t flag = buffer[0];
+	switch (flag){
+		/*packet is flag (1 byte), handle length (1 byte), and 
+		  handle with no nulls/padding (handleLen)*/ 
+		case 1:{
+			uint8_t handleLen = buffer[1];
+			char handleBuffer[handleLen + 1];   // + 1 for NULL
+
+			memcpy(handleBuffer, &buffer[2], handleLen);   // copying the handle over to dataBuffer
+			buffer[handleLen] = '\0';	
+			uint8_t flag = addHandle(list, handleBuffer, socket);
+
+			sendPDU(socket, &flag, 1);
+			
+			break;
+		}
+	}
 }
 
 void addToPollSet(int socketNumber)

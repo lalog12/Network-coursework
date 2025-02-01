@@ -31,38 +31,100 @@
 #define DEBUG_FLAG 1
 
 void recvFromServer(int mainSocket);
-void clientControl(int mainSocket);
+void clientControl(int mainSocket, char * handle);
 void sendToServer(int socketNum);
 int readFromStdin(uint8_t * buffer);
 void checkArgs(int argc, char * argv[]);
 void processStdin(int socketNum);
 void processMSGFromServer(int mainSocket);
+void Initializehandle(int mainSocket, char *handle);
+
+
 
 int main(int argc, char * argv[])
 {
 	int socketNum = 0;         //socket descriptor
 	
-	checkArgs(argc, argv);
+	checkArgs(argc, argv);    
 	
 	/* set up the TCP Client socket  */  
-	socketNum = tcpClientSetup(argv[1], argv[2], DEBUG_FLAG); // server name and port number
-	while(1){
-		clientControl(socketNum);
-	}
+	socketNum = tcpClientSetup(argv[2], argv[3], DEBUG_FLAG); // server name and port number
+
+	clientControl(socketNum, argv[1]);
 	close(socketNum);
 	
 	return 0;
 }
 
-void clientControl(int mainSocket){
+
+void Initializehandle(int mainSocket, char *handle){
+
+	if(!handle){
+		fprintf(stderr, "Error: No handle parameter\n");
+		exit(-1);
+	}
+
+	uint8_t handleLen = strlen(handle);
+
+	if (handleLen > 100){
+		fprintf(stderr, "Invalid handle, handle longer than 100 characters: %s\n", handle);
+		exit(-1);
+	}
+	// packet is flag (1 byte), handle length (1 byte), and handle with no nulls/padding (handleLen)
+	uint16_t bufLen = 1 + 1 + handleLen;
+	uint8_t buf[bufLen];
+	uint8_t flag = 1;
+
+	memcpy(buf, &flag, 1);
+	memcpy(buf + 1, &handleLen, 1);
+	memcpy(buf + 2, handle, handleLen);
+
+	sendPDU(mainSocket, buf, bufLen);
+
+	pollCall(-1);
+
+	uint8_t dataBuffer[1];
+	
+	int messageLen;
+
+	if ((messageLen = recvPDU(mainSocket, dataBuffer, 1)) < 0)
+	{
+		perror("recv call");
+		close(mainSocket);
+		removeFromPollSet(mainSocket);
+		exit(-1);
+	}
+
+	flag = dataBuffer[0];
+
+	if (flag == 2){
+		printf("Successfully added handle to Handle Table: %s\n", handle);
+		return; 
+	}
+	else if(flag == 3){
+		fprintf(stderr, "Handle already in use: %s\n", handle);
+		exit(-1);
+	}
+	else{
+		fprintf(stderr, "Flag does not meet requirements. Flag should be 2 or 3 and it is: %d\n", flag);
+		exit(-1);
+	}
+	
+}
+
+void clientControl(int mainSocket, char * handle){
 	setupPollSet();
 	addToPollSet(mainSocket);
 	addToPollSet(STDIN_FILENO);
 
+	Initializehandle(mainSocket, handle);
+
 	while(1){
-		printf("Enter data: ");
-		fflush(stdout);
+		printf("$:");
+
+		fflush(stdout);  // Enter data: displays immediately
 		int clientSocket = 0;
+
 		if ((clientSocket = pollCall(-1)) < 0){ // wait indefinitely and check for error
 			printf("Error in pollCall\n");
 			exit(-1);
@@ -113,13 +175,15 @@ void recvFromServer(int mainSocket)
 	}
 }
 
+
+
 void sendToServer(int socketNum)
 {
 	uint8_t sendBuf[MAXBUF];   //data buffer
 	int sendLen = 0;        //amount of data to send
 	int sent = 0;            //actual amount of data sent/* get the data and send it   */
-	
-	sendLen = readFromStdin(sendBuf);
+	// sendLen is length of sendBuf
+	sendLen = readFromStdin(sendBuf);  
 	printf("read: %s string len: %d (including null)\n", sendBuf, sendLen);
 	
 	sent =  sendPDU(socketNum, sendBuf, sendLen);
@@ -132,6 +196,8 @@ void sendToServer(int socketNum)
 	printf("Amount of data sent is: %d\n", sent);
 }
 
+// Reads everything from stdin until a \n or buffer limit
+// Returns the inputs
 int readFromStdin(uint8_t * buffer)
 {
 	char aChar = 0;
@@ -160,9 +226,9 @@ int readFromStdin(uint8_t * buffer)
 void checkArgs(int argc, char * argv[])
 {
 	/* check command line arguments  */
-	if (argc != 3)
+	if (argc != 4)
 	{
-		printf("usage: %s host-name port-number \n", argv[0]);
-		exit(1);
+		printf("usage: %s handle-name host-name port-number \n", argv[0]);
+		exit(-1);
 	}
 }

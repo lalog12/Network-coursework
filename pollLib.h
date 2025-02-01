@@ -10,6 +10,16 @@
 #ifndef __POLLLIB_H__
 #define __POLLLIB_H__
 
+#include <poll.h>
+#include <stdlib.h>
+#include <stdio.h>
+#include "networks.h"
+
+#include "safeUtil.h"
+#include "pollLib.h"
+#include "pdu.h"
+#include "linkedlist.h"
+
 #define POLL_SET_SIZE 10
 #define POLL_WAIT_FOREVER -1
 
@@ -19,6 +29,7 @@ void removeFromPollSet(int socketNumber);
 int pollCall(int timeInMilliSeconds);
 
 void addNewSocket(int socketNumber);
-void processClient(int socketNumber);
+void processClient(int socketNumber, linkedList *list);
+void flag_control(linkedList *list, uint8_t *buffer, int socket);
 
 #endif

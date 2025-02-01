@@ -24,29 +24,30 @@
 #include "networks.h"
 #include "safeUtil.h"
 #include "pollLib.h"
+#include "linkedlist.h"
 
 #define MAXBUF 1024
 #define DEBUG_FLAG 1
 
-void recvFromClient(int clientSocket);
+void recvFromClient(int clientSocket, linkedList * list);
 int checkArgs(int argc, char *argv[]);
-void serverControl(int mainServerSocket);
+void serverControl(int mainServerSocket, linkedList *list);
 
 // function changed
 int main(int argc, char *argv[])
 {
 	int mainServerSocket = 0;   //socket descriptor for the server socket
 	int portNumber = 0;
-
 	
 	setupPollSet();
+	linkedList *list = linkedList_init();
 	portNumber = checkArgs(argc, argv);
 	
 	//create the server socket
 	mainServerSocket = tcpServerSetup(portNumber);
 	addToPollSet(mainServerSocket);
 
-	serverControl(mainServerSocket);
+	serverControl(mainServerSocket, list);
 	
 	close(mainServerSocket);
 
@@ -54,7 +55,7 @@ int main(int argc, char *argv[])
 	return 0;
 }
 
-void serverControl(int mainServerSocket){
+void serverControl(int mainServerSocket, linkedList *list){
 
 	while(1){
 		int clientSocket = 0;
@@ -66,32 +67,12 @@ void serverControl(int mainServerSocket){
 			addNewSocket(clientSocket);
 		}
 		else{ // client socket
-			processClient(clientSocket);
+			processClient(clientSocket, list);
 		}
 	}
 }
 
-void recvFromClient(int clientSocket)
-{
-	uint8_t dataBuffer[MAXBUF];
-	int messageLen = 0;
 
-	//now get the data from the client_socket
-	if ((messageLen = recvPDU(clientSocket, dataBuffer, MAXBUF)) < 0)
-	{
-		perror("recv call");
-		exit(-1);
-	}
-
-	if (messageLen > 0)
-	{
-		printf("Message received on socket %d, length: %d Data: %s\n",clientSocket , messageLen, dataBuffer);
-	}
-	else
-	{
-		printf("Connection closed by other side\n");
-	}
-}
 
 int checkArgs(int argc, char *argv[])
 {

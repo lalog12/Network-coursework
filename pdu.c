@@ -7,7 +7,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 
-int sendPDU(int clientSocket, uint8_t * dataBuffer, int lengthOfData){
+int sendPDU(int clientSocket, uint8_t * dataBuffer, int lengthOfData){  // DO NOT ADD THE FLAG HEADER IN SEND PDU
     
     uint16_t totalLength = lengthOfData + 2;
     uint16_t networkTotalLength = htons(totalLength);
@@ -24,14 +24,14 @@ int sendPDU(int clientSocket, uint8_t * dataBuffer, int lengthOfData){
     return bytesSent;
 }
 
-int recvPDU(int socketNumber, uint8_t *dataBuffer, int bufferSize){
+int recvPDU(int socketNumber, uint8_t *dataBuffer, int bufferSize){   // DO NOT PROCESS THE FLAG HEADER IN RECVPDU
     uint8_t lengthBuffer[2];
 
     int bytesReceived = safeRecv(socketNumber, lengthBuffer, 2, MSG_WAITALL);
     if(bytesReceived == 0){
         return 0;
     }
-
+    
     uint16_t totalLength = ntohs(*(uint16_t*)lengthBuffer);
     printf("length of received PDU: %d\n", totalLength);
     
@@ -40,5 +40,6 @@ int recvPDU(int socketNumber, uint8_t *dataBuffer, int bufferSize){
     }
 
     bytesReceived = safeRecv(socketNumber, dataBuffer, totalLength - 2, MSG_WAITALL);  // HAS TO BE LENGTH - 2, DONT CHANGE
+    printf("data received: %s\n", dataBuffer);
     return bytesReceived;
 }
