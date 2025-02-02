@@ -20,7 +20,7 @@ int sendPDU(int clientSocket, uint8_t * dataBuffer, int lengthOfData){  // DO NO
     printf("Total length of PDU: %d\n", totalLength);
 
     int bytesSent = safeSend(clientSocket, PDU_buffer, totalLength, 0);
-    printf("bytesSent: %d\n", bytesSent);
+    printf("Bytes Sent: %d\n", bytesSent);
     return bytesSent;
 }
 

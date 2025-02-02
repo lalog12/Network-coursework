@@ -8,6 +8,7 @@
 
 #include <stdio.h>
 #include <stdlib.h>
+#include <ctype.h>
 #include <sys/types.h>
 #include <sys/stat.h>
 #include <sys/uio.h>
@@ -24,7 +25,6 @@
 #include "networks.h"
 #include "safeUtil.h"
 #include "pollLib.h"
-#include "pdu.h"
 
 
 #define MAXBUF 1024
@@ -32,12 +32,14 @@
 
 void recvFromServer(int mainSocket);
 void clientControl(int mainSocket, char * handle);
-void sendToServer(int socketNum);
+void sendToServer(int socketNum, char *handle);
 int readFromStdin(uint8_t * buffer);
 void checkArgs(int argc, char * argv[]);
-void processStdin(int socketNum);
+void processStdin(int socketNum, char *handle);
 void processMSGFromServer(int mainSocket);
 void Initializehandle(int mainSocket, char *handle);
+int8_t flag_converter(uint8_t * unaltered_buffer);
+void flag_data_constructer(int8_t flag, uint8_t *StdinBuf, uint8_t *sendBuf,  char *clienthandle);
 
 
 
@@ -122,7 +124,7 @@ void clientControl(int mainSocket, char * handle){
 	while(1){
 		printf("$:");
 
-		fflush(stdout);  // Enter data: displays immediately
+		fflush(stdout);  // $: displays immediately
 		int clientSocket = 0;
 
 		if ((clientSocket = pollCall(-1)) < 0){ // wait indefinitely and check for error
@@ -132,8 +134,8 @@ void clientControl(int mainSocket, char * handle){
 		else if(clientSocket == mainSocket){ // message from server
 			processMSGFromServer(mainSocket);
 		}
-		else if (clientSocket == STDIN_FILENO){
-			processStdin(mainSocket);
+		else if (clientSocket == STDIN_FILENO){  // message from client terminal
+			processStdin(mainSocket, handle);
 		}
 		else{
 			printf("No cases met in clientControl function in cclient.c");
@@ -145,8 +147,8 @@ void processMSGFromServer(int mainSocket){
 	recvFromServer(mainSocket);
 }
 
-void processStdin(int socketNum){
-	sendToServer(socketNum);
+void processStdin(int socketNum, char *handle){
+	sendToServer(socketNum, handle);
 }
 
 void recvFromServer(int mainSocket)
@@ -164,7 +166,22 @@ void recvFromServer(int mainSocket)
 
 	if (messageLen > 0)
 	{
-		printf("Message received from server on socket %d, length: %d Data: %s\n",mainSocket , messageLen, dataBuffer);
+		uint8_t sendLen = dataBuffer[1];
+
+		char senderName[sendLen + 1];
+		memcpy(senderName, &dataBuffer[2], sendLen);
+		senderName[sendLen] = '\0';
+
+
+		uint8_t recipientLen = dataBuffer[3 + sendLen];
+		
+		// Message starts after recipient's handle
+		int messageStart = 4 + sendLen + recipientLen;
+		char *messageText = (char *)&dataBuffer[messageStart];
+		
+		// Print in required format
+		printf("%s: %s\n", senderName, messageText);
+		printf("Message received from server on socket %d, length: %d Data: %s\n", mainSocket, messageLen, dataBuffer);
 	}
 	else
 	{
@@ -175,25 +192,164 @@ void recvFromServer(int mainSocket)
 	}
 }
 
+void flag_data_constructer(int8_t flag, uint8_t *StdinBuf, uint8_t *sendBuf,  char *clienthandle){
+	
+	switch(flag){
+		
+		case 4:   //broadcast %b
 
+		break;
 
-void sendToServer(int socketNum)
-{
-	uint8_t sendBuf[MAXBUF];   //data buffer
+		case 5:{   // send message to single client %m
+
+			uint8_t strLen = strlen(clienthandle);  // Store length
+
+			sendBuf[0] = 5;     // flag
+
+			sendBuf[1] = strLen;
+
+			memcpy(sendBuf + 2, clienthandle, strLen);
+
+			sendBuf[2 + strLen] = 1;    
+					
+			strtok((char *)StdinBuf, " ");        // skipping flag
+			char *handle = strtok(NULL, " ");  // getting second word from stdin
+					
+			sendBuf[3 + strLen] = strlen(handle);
+
+			memcpy(sendBuf + 4 + strLen, handle, strlen(handle));
+			
+			int sendBufPos = 4 + strLen + strlen(handle);
+			int StdinBufPos = 4 + strlen(handle);
+
+			while (StdinBuf[StdinBufPos] != '\0'){
+				sendBuf[sendBufPos] = StdinBuf[StdinBufPos];
+				sendBufPos++;
+				StdinBufPos++;
+			} 
+			sendBuf[sendBufPos] = '\0';
+
+			break;
+		}
+
+		case 6: {    // send message to group of clients
+			uint8_t offset = 0;
+			sendBuf[offset] = 6;    // flag          xxxxxxxxxxxxxxx
+			offset++;
+			
+			uint8_t clientLen = strlen(clienthandle) ;  // 
+			sendBuf[offset] = clientLen;     //client len    xxxxxxxxxxx
+			offset++;
+
+			memcpy(sendBuf + offset, clienthandle, clientLen);    // sending client's handle
+			offset += clientLen;
+
+			strtok((char *)StdinBuf, " ");  // Skip %C
+
+			char *numStr = strtok(NULL, " ");  // Get number
+    		if (numStr == NULL) {
+				printf("Invalid command format\n");
+				break;
+    		}
+			char *endptr;
+    		long numRecipients = strtol(numStr, &endptr, 10);
+
+			if (numRecipients < 2 || numRecipients > 9){
+				printf("Invalid number of recipients (must be between 2 and 9)\n");
+				break;
+			}
+			uint8_t numRecipients8 = numRecipients;
+			sendBuf[offset] = numRecipients8;   // # of destination handles
+			offset++;
+
+			uint8_t cnt = 0;
+			while(cnt < numRecipients8){
+				char *dest_handle = strtok(NULL, " ");  // Changed to NULL
+				uint8_t len = strlen(dest_handle);
+				sendBuf[offset] = len;
+				offset++;
+				memcpy(sendBuf + offset, dest_handle, len );
+				offset = offset + len;
+				cnt++;
+			}
+
+			// Get the rest of the message after the last handle
+			char *message = strtok(NULL, "\0");  // Changed delimiter to \0 to get rest of string
+			
+			uint8_t messageLen = strlen(message);
+			memcpy(sendBuf + offset, message, messageLen + 1);  // +1 to include null terminator
+			offset = offset + messageLen + 1;
+
+	
+
+			break;
+
+		case 7: 
+			printf("Client with handle 123456 does not exist" );
+
+		case 10:
+
+		break;
+	}
+}
+}
+
+void sendToServer(int socketNum, char *handle)
+{	
+	uint8_t StdinBuf[MAXBUF];   // terminal buffer
+	uint8_t sendBuf[MAXBUF];	// buffer to send to server
 	int sendLen = 0;        //amount of data to send
 	int sent = 0;            //actual amount of data sent/* get the data and send it   */
+
 	// sendLen is length of sendBuf
-	sendLen = readFromStdin(sendBuf);  
-	printf("read: %s string len: %d (including null)\n", sendBuf, sendLen);
+	sendLen = readFromStdin(StdinBuf);
+	printf("read: %s string len: %d (including null)\n", StdinBuf, sendLen);
 	
-	sent =  sendPDU(socketNum, sendBuf, sendLen);
+	int8_t flag = flag_converter(StdinBuf);
+	if (flag < 0){ // Invalid command inputted on terminal
+		return;
+	}
+	printf("flag: %d\n", flag);
+	flag_data_constructer(flag, StdinBuf, sendBuf, handle);
+
+	uint8_t sendBufLen = strlen((char*)sendBuf);
+	printf("Buffer being sent to server: %s\n", sendBuf);
+	sent =  sendPDU(socketNum, sendBuf, sendBufLen);
 	if (sent < 0)
 	{
 		perror("send call");
 		exit(-1);
 	}
-
 	printf("Amount of data sent is: %d\n", sent);
+}
+
+int8_t flag_converter(uint8_t * unaltered_buffer){
+	char unfiltered_flag[3];
+	memcpy(unfiltered_flag, unaltered_buffer, 2);
+	unfiltered_flag[1] = tolower(unfiltered_flag[1]); //might cause bug
+	unfiltered_flag[2] = '\0';
+
+	if(strcmp(unfiltered_flag, "%m") == 0){
+		return 5;
+	}
+
+	else if (strcmp(unfiltered_flag, "%b") == 0){
+		return 4;
+	}
+
+	else if (strcmp(unfiltered_flag, "%c") == 0){
+		return 6;
+	}
+
+	else if(strcmp(unfiltered_flag, "%l") == 0){
+		return 10;
+	}
+	
+	else{
+		printf("Invalid command\n");
+		return -1;
+	}
+
 }
 
 // Reads everything from stdin until a \n or buffer limit
@@ -205,7 +361,6 @@ int readFromStdin(uint8_t * buffer)
 	
 	// Important you don't input more characters than you have space 
 	buffer[0] = '\0';
-	printf("Enter data: ");
 	while (inputLen < (MAXBUF - 1) && aChar != '\n')
 	{
 		aChar = getchar();
@@ -220,6 +375,7 @@ int readFromStdin(uint8_t * buffer)
 	buffer[inputLen] = '\0';
 	inputLen++;
 	
+
 	return inputLen;
 }
 

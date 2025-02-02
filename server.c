@@ -56,7 +56,6 @@ int main(int argc, char *argv[])
 }
 
 void serverControl(int mainServerSocket, linkedList *list){
-
 	while(1){
 		int clientSocket = 0;
 		if ((clientSocket = pollCall(-1)) < 0){ // wait indefinitely and check for error
